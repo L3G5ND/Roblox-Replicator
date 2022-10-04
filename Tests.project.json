@@ -1,0 +1,26 @@
+{
+    "name": "Replicator Tests",
+    "tree": {
+      "$className": "DataModel",
+  
+      "ReplicatedStorage": {
+        "Replicator": {
+          "$path": "src"
+        }
+      },
+  
+      "ServerScriptService": {
+        "Tests": {
+          "$path": "Tests/Server"
+        }
+      },
+  
+      "StarterPlayer": {
+        "StarterPlayerScripts": {
+          "Tests": {
+            "$path": "Tests/Client"
+          }
+        }
+      }
+    }
+  }
