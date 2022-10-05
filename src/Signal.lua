@@ -2,7 +2,7 @@ local Package = script.Parent
 
 local Util = Package.Util
 local Assert = require(Util.Assert)
-local TypeMarker = require(Util.Typemarker)
+local TypeMarker = require(Util.TypeMarker)
 local Type = require(Util.Type)
 
 local Signal = {}

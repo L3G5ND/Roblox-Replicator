@@ -2,6 +2,7 @@ local RS = game:GetService('ReplicatedStorage')
 local Replicator = require(RS.Replicator)
 
 game.Players.PlayerAdded:Connect(function(player)
+    wait(3)
     local replicator = Replicator.new({
         key = 'PlayerData',
         data = {

@@ -8,7 +8,7 @@ local Util = Package.Util
 local Assert = require(Util.Assert)
 local Error = require(Util.Error)
 local Type = require(Util.Type)
-local TypeMarker = require(Util.Typemarker)
+local TypeMarker = require(Util.TypeMarker)
 local Copy = require(Util.Copy)
 
 local ClientReplicator = {}
@@ -39,6 +39,26 @@ function ClientReplicator.new(key)
 	listenToChange:InvokeServer(self.key)
 
 	return self
+end
+
+function ClientReplicator.isValidReplicator(key)
+	local res = retrieveReplicator:InvokeServer(key)
+	return res.successful
+end
+
+function ClientReplicator.waitForReplicator(key, waitTime, maxTries)
+	waitTime = waitTime or 0.1
+	maxTries = maxTries or 20
+	local lastResult
+	for i = 1, maxTries do
+		local res = retrieveReplicator:InvokeServer(key)
+		lastResult = res
+		if res.successful then
+			return true
+		end
+		task.wait(waitTime)
+	end
+	Error(lastResult.message)
 end
 
 function ClientReplicator:_updateReplicator(newReplicator)
@@ -145,9 +165,9 @@ local function init()
 
 	local replicatorChanged = Package.Remotes.ReplicatorChanged
 	replicatorChanged.OnClientEvent:Connect(function(newReplicator)
-        local replicator = Replicators[newReplicator.key]
-        replicator:_updateReplicator(newReplicator)
-    end)
+		local replicator = Replicators[newReplicator.key]
+		replicator:_updateReplicator(newReplicator)
+	end)
 
 	retrieveReplicator = Package.Remotes.RetrieveReplicator
 	listenToChange = Package.Remotes.ListenToChange

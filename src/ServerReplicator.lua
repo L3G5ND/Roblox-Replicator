@@ -8,7 +8,7 @@ local Util = Package.Util
 local Assert = require(Util.Assert)
 local Assign = require(Util.Assign)
 local Type = require(Util.Type)
-local TypeMarker = require(Util.Typemarker)
+local TypeMarker = require(Util.TypeMarker)
 local Copy = require(Util.Copy)
 
 local ServerReplicator = {}
@@ -250,7 +250,6 @@ function ServerReplicator.retrieveReplicator(plr, key)
 				data = currentReplicator,
 			}
 		else
-			print(plr, Replicators[key])
 			return {
 				successful = false,
 				message = "Access denied",
