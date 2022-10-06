@@ -1,13 +1,11 @@
 {
-    "name": "Replicator Tests",
+    "name": "Networker Testing",
     "tree": {
       "$className": "DataModel",
   
       "ReplicatedStorage": {
-        "Packages": {
-          "$path": "Packages"
-        },
-        "Replicator": {
+        "$ignoreUnknownInstances": false,
+        "Networker": {
           "$path": "src"
         }
       },
@@ -20,6 +18,7 @@
   
       "StarterPlayer": {
         "StarterPlayerScripts": {
+          "$ignoreUnknownInstances": false,
           "Tests": {
             "$path": "Tests/Client"
           }

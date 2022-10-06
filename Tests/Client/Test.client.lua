@@ -1,10 +1,8 @@
 local RS = game:GetService('ReplicatedStorage')
 local Replicator = require(RS.Replicator)
 
-print(1)
-Replicator.waitForReplicator('PlayerData')
-print(2)
 local replicator = Replicator.new('PlayerData')
+
 replicator:onChanged({'test', 'testValue'}, function(newValue, oldValue)
     print('Client: [Changed] -', newValue, oldValue)
 end)

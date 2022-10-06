@@ -23,7 +23,7 @@ game.Players.PlayerAdded:Connect(function(player)
         print('Server: [BeforeDestroy] -', 'Destroying')
     end)
     replicator:onDestroy(function()
-        print('Client: [Destroyed] -', replicator)
+        print('Server: [Destroyed] -', replicator)
     end)
 
     local data = replicator:get()

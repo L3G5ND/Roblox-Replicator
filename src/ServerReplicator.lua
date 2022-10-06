@@ -2,22 +2,16 @@ local Players = game:GetService("Players")
 local Package = script.Parent
 
 local Signal = require(Package.Signal)
-local None = require(Package.None)
+local Networker = require(Package.Networker)
+local OnChanged = require(Package.OnChanged)
 
 local Util = Package.Util
 local Assert = require(Util.Assert)
 local Assign = require(Util.Assign)
-local Type = require(Util.Type)
-local TypeMarker = require(Util.TypeMarker)
 local Copy = require(Util.Copy)
 
 local ServerReplicator = {}
-ServerReplicator.type = TypeMarker.Mark("ServerReplicator")
-
 local Replicators = {}
-
-local replicatorChanged
-local destroyReplicator
 
 function ServerReplicator.new(data)
 	Assert(data.key, "Invalid argument #1 ('key' required)")
@@ -28,17 +22,16 @@ function ServerReplicator.new(data)
 	)
 
 	local self = setmetatable({}, { __index = ServerReplicator })
-	Type.SetType(self, ServerReplicator.type)
 
 	self.key = data.key
 	self.data = data.data
 	self.replicators = data.replicators or {}
 
-	self._changedSignal = Signal.new()
+	self._playerConnections = {}
 
-	self._connections = {}
-	self.destroyCallbacks = {}
-	self.onDestroyCallbacks = {}
+	self._changedSignal = Signal.new()
+	self._beforeDestroySignal = Signal.new()
+	self._onDestroySignal = Signal.new()
 
 	if not Replicators[data.key] then
 		Replicators[data.key] = {}
@@ -48,9 +41,8 @@ function ServerReplicator.new(data)
 	return self
 end
 
-function ServerReplicator.getReplicators(key)
-	Assert(Replicators[key], "Invalid argument #1 (must be a valid Replicator))")
-	return Replicators[key]
+function ServerReplicator:get()
+	return self.data
 end
 
 function ServerReplicator:set(value)
@@ -64,21 +56,17 @@ function ServerReplicator:set(value)
 	return self.data
 end
 
-function ServerReplicator:get()
-	return self.data
-end
-
 function ServerReplicator:setReplicators(newReplicators)
 	Assert(
 		typeof(newReplicators) == "table" or typeof(newReplicators) == "string" and newReplicators == "All",
 		"Invalid argument #1 ('replicators' must be of type 'table' or 'string' ('All'))"
 	)
-	local oldReplicators = self.replicators == "All" and "All" or Copy(self.replicators)
+	local oldReplicators = Copy(self.replicators)
 	self.replicators = newReplicators
 
 	if newReplicators == "All" then
 		if oldReplicators == "All" then
-			replicatorChanged:FireAllClients(self)
+			Networker.SendAll('Replicator/ReplicatorChanged', self:_getSendableData())
 		else
 			for _, plr in pairs(Players:GetPlayers()) do
 				local hasPlr
@@ -88,7 +76,7 @@ function ServerReplicator:setReplicators(newReplicators)
 					end
 				end
 				if hasPlr then
-					replicatorChanged:FireAllClients(self)
+					Networker.SendAll('Replicator/ReplicatorChanged', self:_getSendableData())
 				end
 			end
 		end
@@ -103,8 +91,8 @@ function ServerReplicator:setReplicators(newReplicators)
 						end
 					end
 					if not hasPlr then
-						self._connections[plr]()
-						destroyReplicator:FireClient(plr, self.key)
+						self._playerConnections[plr]:Disconnect()
+						Networker.Send('Replicator/DestroyReplicator', plr, self.key)
 					end
 				end
 			end
@@ -117,10 +105,10 @@ function ServerReplicator:setReplicators(newReplicators)
 					end
 				end
 				if hasPlr then
-					replicatorChanged:FireClient(plr, self)
+					Networker.SendAll('Replicator/ReplicatorChanged', self:_getSendableData())
 				else
-					self._connections[plr]()
-					destroyReplicator:FireClient(plr, self.key)
+					self._playerConnections[plr]:Disconnect()
+					Networker.Send('Replicator/DestroyReplicator', plr, self.key)
 				end
 			end
 		end
@@ -129,40 +117,7 @@ function ServerReplicator:setReplicators(newReplicators)
 end
 
 function ServerReplicator:onChanged(...)
-	local args = { ... }
-	if #args == 1 then
-		local callback = args[1]
-		Assert(typeof(callback) == "function", "Invalid argument #1 (type 'function' expected)")
-
-		return self._changedSignal:Connect(callback)
-	elseif #args == 2 then
-		local arg1Type = typeof(args[1])
-		Assert(arg1Type == "string" or arg1Type == "table", "Invalid argument #1 (must be type 'string' or 'table')")
-
-		if arg1Type == "string" then
-			local key = args[1]
-			local callback = args[2]
-
-			return self._changedSignal:Connect(function(newData, oldData)
-				local newValue = newData[key]
-				local oldValue = oldData[key]
-				if newValue ~= oldValue then
-					callback(newValue, oldValue)
-				end
-			end)
-		elseif arg1Type == "table" then
-			local path = args[1]
-			local callback = args[2]
-
-			return self._changedSignal:Connect(function(newData, oldData)
-				local newValue = ServerReplicator.getPath(path, newData)
-				local oldValue = ServerReplicator.getPath(path, oldData)
-				if newValue ~= oldValue then
-					callback(newValue, oldValue)
-				end
-			end)
-		end
-	end
+	OnChanged(self._changedSignal, ...)
 end
 
 function ServerReplicator:getPriority()
@@ -188,49 +143,41 @@ function ServerReplicator:isPlayerReplicated(plr)
 end
 
 function ServerReplicator:beforeDestroy(callback)
-	self.destroyCallbacks[#self.destroyCallbacks + 1] = callback
+	self._beforeDestroySignal:Connect(callback)
 end
 
 function ServerReplicator:onDestroy(callback)
-	self.onDestroyCallbacks[#self.onDestroyCallbacks + 1] = callback
+	self._onDestroySignal:Connect(callback)
 end
 
 function ServerReplicator:Destroy()
 	local onDestroyCallbacks = Copy(self.onDestroyCallbacks)
 	local replicators = self.replicators == "All" and "All" or Copy(self.replicators)
-	local key = self.key
 
-	for _, callback in pairs(self.destroyCallbacks) do
-		callback()
-	end
+	self._beforeDestroySignal:Fire()
 
 	Replicators[self.key] = nil
-	local function destroyRecursive(tbl)
-		for key, value in pairs(tbl) do
-			if typeof(value) == "table" then
-				destroyRecursive(value)
-			elseif Type.GetType(value) == ServerReplicator.type then
-				value:Destroy()
-			end
-			tbl[key] = nil
-		end
-	end
-	destroyRecursive(self)
 
 	if replicators == "All" then
-		destroyReplicator:FireAllClients(key)
+		Networker.SendAll('Replicator/DestroyReplicator', self.key)
 	else
 		for _, plr in pairs(replicators) do
-			destroyReplicator:FireClient(plr, key)
+			Networker.Send('Replicator/DestroyReplicator', plr, self.key)
 		end
 	end
 
-	for _, callback in pairs(onDestroyCallbacks) do
-		callback()
-	end
+	self._onDestroySignal:Fire()
 end
 
-function ServerReplicator.retrieveReplicator(plr, key)
+function ServerReplicator:_getSendableData()
+	local sendableData = {}
+	sendableData.key = self.key
+	sendableData.data = self.data
+	sendableData.replicators = self.replicators
+	return sendableData
+end
+
+local function retrieveReplicator(plr, key)
 	if Replicators[key] then
 		local currentPriority = 0
 		local currentReplicator
@@ -245,80 +192,47 @@ function ServerReplicator.retrieveReplicator(plr, key)
 			end
 		end
 		if currentReplicator then
-			return {
-				successful = true,
-				data = currentReplicator,
-			}
+			return {successful = true, data = currentReplicator}
 		else
-			return {
-				successful = false,
-				message = "Access denied",
-			}
+			return {successful = false, message = "Access denied",}
 		end
 	else
-		return {
-			successful = false,
-			message = "Invalid replicator key",
-		}
+		return {successful = false, message = "Invalid replicator key",}
 	end
 end
 
-function ServerReplicator.listenToChange(plr, key)
-	local res = ServerReplicator.retrieveReplicator(plr, key)
+local function retrieveSendableReplicator(plr, key)
+	local replicator = retrieveReplicator(plr, key)
+	replicator.data = replicator.data and replicator.data:_getSendableData()
+	return replicator
+end
+
+local function link(plr, key)
+	local res = retrieveReplicator(plr, key)
 	if res.successful then
 		local replicator = res.data
 		local connection = replicator._changedSignal:Connect(function()
-			local res = ServerReplicator.retrieveReplicator(plr, key)
+			local res = retrieveSendableReplicator(plr, key)
 			if res.successful then
-				replicatorChanged:FireClient(plr, res.data)
+				Networker.SendAll('Replicator/ReplicatorChanged', res.data)
 			end
 		end)
-		replicator._connections[plr] = connection
-		return {
-			successful = true,
-		}
+		replicator._playerConnections[plr] = connection
+		return {successful = true}
 	else
 		return res
 	end
 end
 
-function ServerReplicator.getPath(path, tbl)
-	local currentPath = tbl
-	for _, value in pairs(path) do
-		currentPath = currentPath[value]
-		if not currentPath then
-			return nil
-		end
-	end
-	return currentPath
-end
-
 local init = function()
-	local function createRemote(name, parent)
-		local remote = Instance.new("RemoteEvent")
-		remote.Name = name
-		remote.Parent = parent
-		return remote
-	end
+	Networker.createNetworker('Replicator/RetrieveReplicator', 'RemoteFunction')
+	Networker.OnInvoke('Replicator/RetrieveReplicator', retrieveSendableReplicator)
 
-	local function createRemoteFunction(name, parent)
-		local remote = Instance.new("RemoteFunction")
-		remote.Name = name
-		remote.Parent = parent
-		return remote
-	end
+	Networker.createNetworker('Replicator/Link', 'RemoteFunction')
+	Networker.OnInvoke('Replicator/Link', link)
 
-	local Remotes = Instance.new("Folder", script.Parent)
-	Remotes.Name = "Remotes"
-
-	local retrieveReplicator = createRemoteFunction("RetrieveReplicator", Remotes)
-	retrieveReplicator.OnServerInvoke = ServerReplicator.retrieveReplicator
-
-	local listenToChange = createRemoteFunction("ListenToChange", Remotes)
-	listenToChange.OnServerInvoke = ServerReplicator.listenToChange
-
-	destroyReplicator = createRemote("DestroyReplicator", Remotes)
-	replicatorChanged = createRemote("ReplicatorChanged", Remotes)
+	Networker.createNetworker('Replicator/DestroyReplicator', 'RemoteEvent')
+	Networker.createNetworker('Replicator/ReplicatorChanged', 'RemoteEvent')
 end
 init()
 

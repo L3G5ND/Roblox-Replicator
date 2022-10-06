@@ -1,0 +1,15 @@
+{
+    "name": "Replicator Place",
+    "tree": {
+      "$className": "DataModel",
+  
+      "ReplicatedStorage": {
+        "Packages": {
+          "$path": "Packages"
+        },
+        "Replicator": {
+          "$path": "src"
+        }
+      }
+    }
+}
