@@ -32,14 +32,12 @@ function ClientReplicator.new(key, timeOut)
 	end
 
 	local self = setmetatable(replicator, { __index = ClientReplicator })
-
+	
 	self._changedSignal = Signal.new()
 	self._beforeDestroySignal = Signal.new()
 	self._onDestroySignal = Signal.new()
 	
 	Replicators[self.key] = self
-
-	local res = Networker.Get('Replicator/Link', self.key)
 
 	return self
 end
@@ -110,8 +108,17 @@ local function init()
 	end)
 
 	Networker.OnEvent('Replicator/ReplicatorChanged', function(newReplicator)
-		local replicator = Replicators[newReplicator.key]
-		replicator:_updateReplicator(newReplicator)
+		local startTime = os.time()
+		while true do
+			if Replicators[newReplicator.key] then
+				break
+			end
+			if os.time() - startTime >= (10) then
+				return
+			end
+			RunService.RenderStepped:Wait()
+		end
+		Replicators[newReplicator.key]:_updateReplicator(newReplicator)
 	end)
 end
 init()

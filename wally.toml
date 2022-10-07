@@ -1,7 +1,7 @@
 [package]
 name = "l3g5nd/replicator"
 description = "Allows for replicating values across the Server-Client boundery."
-version = "1.2.0"
+version = "1.3.0"
 license = "Apache-2.0"
 authors = ["L3G5ND"]
 registry = "https://github.com/UpliftGames/wally-index"

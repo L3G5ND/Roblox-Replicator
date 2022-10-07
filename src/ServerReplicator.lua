@@ -27,11 +27,15 @@ function ServerReplicator.new(data)
 	self.data = data.data
 	self.replicators = data.replicators or {}
 
-	self._playerConnections = {}
-
 	self._changedSignal = Signal.new()
 	self._beforeDestroySignal = Signal.new()
 	self._onDestroySignal = Signal.new()
+
+	self._changedSignal:Connect(function()
+		for _, plr in self:replicatorIterator() do
+			Networker.Send('Replicator/ReplicatorChanged', plr, self:_getSendableData())
+		end
+	end)
 
 	if not Replicators[data.key] then
 		Replicators[data.key] = {}
@@ -91,7 +95,6 @@ function ServerReplicator:setReplicators(newReplicators)
 						end
 					end
 					if not hasPlr then
-						self._playerConnections[plr]:Disconnect()
 						Networker.Send('Replicator/DestroyReplicator', plr, self.key)
 					end
 				end
@@ -107,7 +110,6 @@ function ServerReplicator:setReplicators(newReplicators)
 				if hasPlr then
 					Networker.SendAll('Replicator/ReplicatorChanged', self:_getSendableData())
 				else
-					self._playerConnections[plr]:Disconnect()
 					Networker.Send('Replicator/DestroyReplicator', plr, self.key)
 				end
 			end
@@ -148,6 +150,14 @@ end
 
 function ServerReplicator:onDestroy(callback)
 	self._onDestroySignal:Connect(callback)
+end
+
+function ServerReplicator:replicatorIterator()
+	if self.replicators == 'All' then
+		return pairs(Players:GetPlayers())
+	else
+		return pairs(self.replicators)
+	end
 end
 
 function ServerReplicator:Destroy()
@@ -207,29 +217,9 @@ local function retrieveSendableReplicator(plr, key)
 	return replicator
 end
 
-local function link(plr, key)
-	local res = retrieveReplicator(plr, key)
-	if res.successful then
-		local replicator = res.data
-		local connection = replicator._changedSignal:Connect(function()
-			local res = retrieveSendableReplicator(plr, key)
-			if res.successful then
-				Networker.SendAll('Replicator/ReplicatorChanged', res.data)
-			end
-		end)
-		replicator._playerConnections[plr] = connection
-		return {successful = true}
-	else
-		return res
-	end
-end
-
 local init = function()
 	Networker.createNetworker('Replicator/RetrieveReplicator', 'RemoteFunction')
 	Networker.OnInvoke('Replicator/RetrieveReplicator', retrieveSendableReplicator)
-
-	Networker.createNetworker('Replicator/Link', 'RemoteFunction')
-	Networker.OnInvoke('Replicator/Link', link)
 
 	Networker.createNetworker('Replicator/DestroyReplicator', 'RemoteEvent')
 	Networker.createNetworker('Replicator/ReplicatorChanged', 'RemoteEvent')
