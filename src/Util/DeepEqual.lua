@@ -1,6 +1,8 @@
 local Util = script.Parent
 local Assert = require(Util.Assert)
 
+local deepEqual
+
 local function equal(v1, v2)
 	if v1 == v2 then
 		return true
@@ -17,7 +19,7 @@ local function equal(v1, v2)
 	return false
 end
 
-local function deepEqual(v1, v2, howDeep)
+deepEqual = function(v1, v2, howDeep)
 	Assert(howDeep == nil or typeof(howDeep) == "number", "Invalid argument #1 (Must be of type 'number')")
 	local equal, table = equal(v1, v2)
 	if not equal then

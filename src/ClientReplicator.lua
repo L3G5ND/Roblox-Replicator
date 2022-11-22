@@ -104,7 +104,9 @@ end
 
 local function init()
 	Networker.OnEvent('Replicator/DestroyReplicator', function(key)
-		Replicators[key]:Destroy()
+		if Replicators[key] then
+			Replicators[key]:Destroy()
+		end
 	end)
 
 	Networker.OnEvent('Replicator/ReplicatorChanged', function(newReplicator)

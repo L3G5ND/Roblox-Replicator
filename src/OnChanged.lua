@@ -2,8 +2,12 @@ local Package = script.Parent
 
 local Util = Package.Util
 local Assert = require(Util.Assert)
+local DeepEqual = require(Util.DeepEqual)
 
 local function getPath(path, tbl)
+	if typeof(tbl) ~= 'table' then
+		return nil
+	end
 	local currentPath = tbl
 	for _, value in pairs(path) do
 		currentPath = currentPath[value]
@@ -32,7 +36,7 @@ return function(signal, ...)
 			return signal:Connect(function(newData, oldData)
 				local newValue = newData[key]
 				local oldValue = oldData[key]
-				if newValue ~= oldValue then
+				if not DeepEqual(newValue, oldValue) then
 					callback(newValue, oldValue)
 				end
 			end)
@@ -43,7 +47,7 @@ return function(signal, ...)
 			return signal:Connect(function(newData, oldData)
 				local newValue = getPath(path, newData)
 				local oldValue = getPath(path, oldData)
-				if newValue ~= oldValue then
+				if not DeepEqual(newValue, oldValue) then
 					callback(newValue, oldValue)
 				end
 			end)

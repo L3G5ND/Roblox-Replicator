@@ -3,8 +3,11 @@ local Replicator = require(RS.Replicator)
 
 local replicator = Replicator.new('PlayerData')
 
+replicator:onChanged(function(newValue, oldValue)
+    print('Client: [Changed]')
+end)
 replicator:onChanged({'test', 'testValue'}, function(newValue, oldValue)
-    print('Client: [Changed] -', newValue, oldValue)
+    print('Client: [TestValue Changed] -', newValue, oldValue)
 end)
 replicator:beforeDestroy(function()
     print('Client: [BeforeDestroy] -', 'Destroying')

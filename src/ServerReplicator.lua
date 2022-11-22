@@ -4,14 +4,26 @@ local Package = script.Parent
 local Signal = require(Package.Signal)
 local Networker = require(Package.Networker)
 local OnChanged = require(Package.OnChanged)
+local None = require(Package.None)
 
 local Util = Package.Util
 local Assert = require(Util.Assert)
 local Assign = require(Util.Assign)
+local DeepEqual = require(Util.DeepEqual)
 local Copy = require(Util.Copy)
 
 local ServerReplicator = {}
 local Replicators = {}
+
+local function removeNone(tbl)
+	for key, value in pairs(tbl) do
+		if value == None then
+			tbl[key] = nil
+		elseif typeof(value) == 'table' then
+			removeNone(value)
+		end
+	end
+end
 
 function ServerReplicator.new(data)
 	Assert(data.key, "Invalid argument #1 ('key' required)")
@@ -56,7 +68,12 @@ function ServerReplicator:set(value)
 	else
 		self.data = value
 	end
-	self._changedSignal:Fire(self.data, oldData)
+	if typeof(self.data) == 'table' then
+		removeNone(self.data)
+	end
+	if not DeepEqual(self.data, oldData) then
+		self._changedSignal:Fire(self.data, oldData)
+	end
 	return self.data
 end
 

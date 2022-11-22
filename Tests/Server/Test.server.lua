@@ -2,7 +2,7 @@ local RS = game:GetService('ReplicatedStorage')
 local Replicator = require(RS.Replicator)
 
 game.Players.PlayerAdded:Connect(function(player)
-    wait(3)
+
     local replicator = Replicator.new({
         key = 'PlayerData',
         data = {
@@ -16,8 +16,11 @@ game.Players.PlayerAdded:Connect(function(player)
         replicators = {player}
     })
 
+    replicator:onChanged(function(newValue, oldValue)
+        print('Server: [Changed]')
+    end)
     replicator:onChanged({'test', 'testValue'}, function(newValue, oldValue)
-        print('Server: [Changed] -', newValue, oldValue)
+        print('Server: [TestValue Changed] -', newValue, oldValue)
     end)
     replicator:beforeDestroy(function()
         print('Server: [BeforeDestroy] -', 'Destroying')
@@ -29,13 +32,15 @@ game.Players.PlayerAdded:Connect(function(player)
     local data = replicator:get()
 
     task.wait(3)
+    
     replicator:set({
         test = {
             testValue = data.test.testValue + 1
         }
     })
 
-    task.wait(3)
+    task.wait(1)
+
     replicator:set({
         name = Replicator.None,
         test = {
@@ -43,6 +48,17 @@ game.Players.PlayerAdded:Connect(function(player)
         }
     })
 
-    replicator:Destroy()
+    task.wait(1)
 
+    replicator:set({
+        test = Replicator.None
+    })
+
+    task.wait(1)
+
+    replicator:set(Replicator.None)
+
+    task.wait(1)
+
+    replicator:Destroy()
 end)
