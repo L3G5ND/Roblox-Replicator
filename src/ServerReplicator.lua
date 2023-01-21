@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local http = game:GetService('HttpService')
 local Package = script.Parent
 
 local Signal = require(Package.Signal)
@@ -38,6 +39,7 @@ function ServerReplicator.new(data)
 	self.key = data.key
 	self.data = data.data
 	self.replicators = data.replicators or {}
+	self.Guid = http:GenerateGUID(false)
 
 	self._changedSignal = Signal.new()
 	self._beforeDestroySignal = Signal.new()
@@ -52,7 +54,7 @@ function ServerReplicator.new(data)
 	if not Replicators[data.key] then
 		Replicators[data.key] = {}
 	end
-	table.insert(Replicators[data.key], self)
+	Replicators[data.key][self.Guid] = self
 
 	return self
 end
@@ -183,7 +185,7 @@ function ServerReplicator:Destroy()
 
 	self._beforeDestroySignal:Fire()
 
-	Replicators[self.key] = nil
+	Replicators[self.key][self.Guid] = nil
 
 	if replicators == "All" then
 		Networker.SendAll('Replicator/DestroyReplicator', self.key)
@@ -201,6 +203,7 @@ function ServerReplicator:_getSendableData()
 	sendableData.key = self.key
 	sendableData.data = self.data
 	sendableData.replicators = self.replicators
+	sendableData.Guid = self.Guid
 	return sendableData
 end
 

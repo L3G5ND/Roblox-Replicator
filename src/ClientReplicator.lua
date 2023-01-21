@@ -37,7 +37,10 @@ function ClientReplicator.new(key, timeOut)
 	self._beforeDestroySignal = Signal.new()
 	self._onDestroySignal = Signal.new()
 	
-	Replicators[self.key] = self
+	if not Replicators[self.key] then
+		Replicators[self.key] = {}
+	end
+	table.insert(Replicators[self.key], self)
 
 	return self
 end
@@ -105,7 +108,10 @@ end
 local function init()
 	Networker.OnEvent('Replicator/DestroyReplicator', function(key)
 		if Replicators[key] then
-			Replicators[key]:Destroy()
+			for i, replicator in pairs(Replicators[key]) do
+				replicator:Destroy()
+				Replicators[key][i] = nil
+			end	
 		end
 	end)
 
@@ -120,7 +126,9 @@ local function init()
 			end
 			RunService.RenderStepped:Wait()
 		end
-		Replicators[newReplicator.key]:_updateReplicator(newReplicator)
+		for _, replicator in pairs(Replicators[newReplicator.key]) do
+			replicator:_updateReplicator(newReplicator)
+		end
 	end)
 end
 init()
