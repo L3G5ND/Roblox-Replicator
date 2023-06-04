@@ -41,7 +41,7 @@ function ClientReplicator.new(key, timeOut)
 		Replicators[self.key] = {}
 	end
 
-	self.replicatorIndex = #Replicators[self.key]
+	self.replicatorIndex = #Replicators[self.key]+1
 
 	Replicators[self.key][self.replicatorIndex] = self
 
