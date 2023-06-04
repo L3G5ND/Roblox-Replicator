@@ -40,7 +40,10 @@ function ClientReplicator.new(key, timeOut)
 	if not Replicators[self.key] then
 		Replicators[self.key] = {}
 	end
-	table.insert(Replicators[self.key], self)
+
+	self.replicatorIndex = #Replicators[self.key]
+
+	Replicators[self.key][self.replicatorIndex] = self
 
 	return self
 end
@@ -85,7 +88,7 @@ end
 
 function ClientReplicator:Destroy()
 	self._beforeDestroySignal:Fire()
-	Replicators[self.key] = nil
+	Replicators[self.key][self.replicatorIndex] = nil
 	self._onDestroySignal:Fire()
 end
 
@@ -110,8 +113,8 @@ local function init()
 		if Replicators[key] then
 			for i, replicator in pairs(Replicators[key]) do
 				replicator:Destroy()
-				Replicators[key][i] = nil
-			end	
+			end
+			Replicators[key] = nil
 		end
 	end)
 
