@@ -1,139 +1,150 @@
-local RunService = game:GetService('RunService')
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 local Package = script.Parent
-
-local Signal = require(Package.Signal)
 local Networker = require(Package.Networker)
-local OnChanged = require(Package.OnChanged)
+local WrapChangedConnection = require(Package.WrapChangedConnection)
+local None = require(Package.None)
 
 local Util = Package.Util
+local Assert = require(Util.Assert)
 local Error = require(Util.Error)
-local Copy = require(Util.Copy)
+local Assign = require(Util.Assign)
 local DeepEqual = require(Util.DeepEqual)
+local Copy = require(Util.Copy)
+
+local getReplicatorRemote = Networker.new("Replicator/Get")
+local destroyReplicatorRemote = Networker.new("Replicator/Destroy")
+local replicatorChangedRemote = Networker.new("Replicator/Changed")
 
 local ClientReplicator = {}
 local Replicators = {}
 
+local function removeNone(tbl)
+	for key, value in pairs(tbl) do
+		if value == None then
+			tbl[key] = nil
+		elseif typeof(value) == "table" then
+			removeNone(value)
+		end
+	end
+end
+
 function ClientReplicator.new(key, timeOut)
+	Assert(typeof(key) == "string", "Invalid argument #1 (must be a 'string')")
+	Assert(typeof(timeOut) == "number" or timeOut == nil, "Invalid argument #1 (must be a 'string')")
+
+	if Replicators[key] then
+		return Replicators[key]
+	end
+
 	local replicator
 
-	local startTime = os.time()
+	local startTime = os.clock()
 	while true do
-		local res = Networker.Get('Replicator/RetrieveReplicator', key)
-		if res.successful then
-			replicator = res.data
+		local result, shouldError = getReplicatorRemote:Invoke(key)
+		if shouldError then
+			Error(result)
+		end
+		if result then
+			replicator = result
 			break
 		end
-		if os.time() - startTime >= (timeOut or 10) then
-			Error(res.message)
+		if os.clock() - startTime >= (timeOut or 5) then
+			Error("Invalid replicator key ('" .. key .. "')")
 		end
-		RunService.RenderStepped:Wait()
+		task.wait()
 	end
 
 	local self = setmetatable(replicator, { __index = ClientReplicator })
-	
-	self._changedSignal = Signal.new()
-	self._beforeDestroySignal = Signal.new()
-	self._onDestroySignal = Signal.new()
-	
+
+	self._changedConnection = {}
+
 	if not Replicators[self.key] then
 		Replicators[self.key] = {}
 	end
-
-	self.replicatorIndex = #Replicators[self.key]+1
-
-	Replicators[self.key][self.replicatorIndex] = self
+	Replicators[self.key] = self
 
 	return self
 end
 
-function ClientReplicator.isValidReplicator(key)
-	local res = Networker.Get('Replicator/RetrieveReplicator', key)
-	return res.successful
+function ClientReplicator.getReplicator(key)
+	return Replicators[key]
 end
 
 function ClientReplicator:get()
-	return self.data
+	return Copy(self.data)
 end
 
-function ClientReplicator:expect(value, timeOut, onError)
-	local startTime = os.time()
-	while true do
-		if DeepEqual(self:get(), value) then
-			break
-		end
-		if os.time() - startTime >= (timeOut or 10) then
-			if onError then
-				onError()
-			else
-				Error('Invalid argument #1 (self:get() must equal argument #1 within '..timeOut..' seconds)')
-			end
-		end
-		RunService.RenderStepped:Wait()
+function ClientReplicator:Connect(...)
+	local connections = self._changedConnection
+
+	local connection = {
+		_metadata = {
+			callback = nil,
+		},
+		_id = HttpService:GenerateGUID(false),
+		_isAlive = true,
+	}
+
+	function connection:Disconnect()
+		self._isAlive = false
+		connections[self._id] = nil
+	end
+
+	setmetatable(connection, { __index = connection })
+
+	connections[connection._id] = connection
+
+	WrapChangedConnection(connection, ...)
+
+	return connection
+end
+
+function ClientReplicator:DisconnectAll()
+	for _, connection in self._changedConnection do
+		connection:Disconnect()
 	end
 end
 
-function ClientReplicator:onChanged(...)
-	OnChanged(self._changedSignal, ...)
-end
-
-function ClientReplicator:beforeDestroy(callback)
-	self._beforeDestroySignal:Connect(callback)
-end
-
-function ClientReplicator:onDestroy(callback)
-	self._onDestroySignal:Connect(callback)
+function ClientReplicator:isPlayerReplicated(player)
+	if self.players == "all" then
+		return true
+	end
+	for _, otherPlayer in pairs(self.players) do
+		if player == otherPlayer then
+			return true
+		end
+	end
+	return false
 end
 
 function ClientReplicator:Destroy()
-	self._beforeDestroySignal:Fire()
-	Replicators[self.key][self.replicatorIndex] = nil
-	self._onDestroySignal:Fire()
+	self:DisconnectAll()
+	Replicators[self.key] = nil
 end
 
-function ClientReplicator:_updateReplicator(newReplicator)
+function ClientReplicator:_update(updatedReplicator)
 	local oldData = Copy(self.data)
-	for key, value in pairs(newReplicator) do
-		self[key] = value
+	self.data = updatedReplicator.data
+	self.players = updatedReplicator.players
+	for _, connection in pairs(self._changedConnection) do
+		connection._metadata.callback(self.data, oldData)
 	end
-	self._changedSignal:Fire(self.data, oldData)
 end
 
-function ClientReplicator:_getSendableData()
-	local sendableData = {}
-	sendableData.key = self.key
-	sendableData.data = self.data
-	sendableData.replicators = self.replicators
-	return sendableData
-end
+destroyReplicatorRemote:Connect(function(key)
+	local replicator = Replicators[key]
+	if replicator then
+		replicator:Destroy()
+	end
+end)
 
-local function init()
-	Networker.OnEvent('Replicator/DestroyReplicator', function(key)
-		if Replicators[key] then
-			for i, replicator in pairs(Replicators[key]) do
-				replicator:Destroy()
-			end
-			Replicators[key] = nil
-		end
-	end)
-
-	Networker.OnEvent('Replicator/ReplicatorChanged', function(newReplicator)
-		local startTime = os.time()
-		while true do
-			if Replicators[newReplicator.key] then
-				break
-			end
-			if os.time() - startTime >= (10) then
-				return
-			end
-			RunService.RenderStepped:Wait()
-		end
-		for _, replicator in pairs(Replicators[newReplicator.key]) do
-			replicator:_updateReplicator(newReplicator)
-		end
-	end)
-end
-init()
+replicatorChangedRemote:Connect(function(updatedReplicator)
+	local replicator = Replicators[updatedReplicator.key]
+	if replicator then
+		replicator:_update(updatedReplicator)
+	end
+end)
 
 return ClientReplicator

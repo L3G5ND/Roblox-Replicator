@@ -1,14 +1,11 @@
 local RunService = game:GetService("RunService")
 
-local None = require(script.None)
-local Replicator
+local Replicator = RunService:IsServer() and require(script.ServerReplicator) or require(script.ClientReplicator)
 
-if RunService:IsServer() then
-	Replicator = require(script.ServerReplicator)
-else
-	Replicator = require(script.ClientReplicator)
-end
+local ReplicatorAPI = {}
 
-Replicator.None = None
+ReplicatorAPI.new = Replicator.new
 
-return Replicator
+ReplicatorAPI.None = require(script.None)
+
+return ReplicatorAPI

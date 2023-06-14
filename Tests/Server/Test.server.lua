@@ -4,54 +4,45 @@ local Replicator = require(RS.Replicator)
 game.Players.PlayerAdded:Connect(function(player)
 
     local replicator = Replicator.new({
-        key = 'PlayerData',
+        key = player.UserId..'_replicator',
         data = {
-            name = player.Name,
-            id = player.UserId,
-            age = player.AccountAge,
-            test = {
-                testValue = 1
+            a = 'a',
+            b = 'b',
+            c = {
+                a = 'a',
+                b = 'b'
             }
         },
-        replicators = {player}
+        players = { player }
     })
 
-    replicator:onChanged(function(newValue, oldValue)
-        print('Server: [Changed]')
-    end)
-    replicator:onChanged({'test', 'testValue'}, function(newValue, oldValue)
-        print('Server: [TestValue Changed] -', newValue, oldValue)
-    end)
-    replicator:beforeDestroy(function()
-        print('Server: [BeforeDestroy] -', 'Destroying')
-    end)
-    replicator:onDestroy(function()
-        print('Server: [Destroyed] -', replicator)
+    replicator:Connect(function(newValue, oldValue)
+        print('Server: [Changed]', newValue, oldValue)
     end)
 
-    local data = replicator:get()
-
-    task.wait(3)
+    task.wait(5)
     
     replicator:set({
-        test = {
-            testValue = data.test.testValue + 1
+        c = {
+            a = 'b',
+            b = 'a'
         }
     })
 
     task.wait(1)
 
     replicator:set({
-        name = Replicator.None,
-        test = {
-            testValue = data.test.testValue + 1
+        b = Replicator.None,
+        c = {
+            a = 'a',
+            b = Replicator.None
         }
     })
 
     task.wait(1)
 
     replicator:set({
-        test = Replicator.None
+        c = Replicator.None
     })
 
     task.wait(1)

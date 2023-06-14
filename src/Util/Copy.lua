@@ -1,5 +1,5 @@
 local function copy(tbl, cache)
-	if typeof(tbl) ~= 'table' then
+	if typeof(tbl) ~= "table" then
 		return tbl
 	end
 

@@ -5,7 +5,7 @@ local Assert = require(Util.Assert)
 local DeepEqual = require(Util.DeepEqual)
 
 local function getPath(path, tbl)
-	if typeof(tbl) ~= 'table' then
+	if typeof(tbl) ~= "table" then
 		return nil
 	end
 	local currentPath = tbl
@@ -18,13 +18,13 @@ local function getPath(path, tbl)
 	return currentPath
 end
 
-return function(signal, ...)
-    local args = { ... }
+return function(connection, ...)
+	local args = { ... }
 	if #args == 1 then
 		local callback = args[1]
 		Assert(typeof(callback) == "function", "Invalid argument #1 (type 'function' expected)")
 
-		return signal:Connect(callback)
+		connection._metadata.callback = callback
 	elseif #args == 2 then
 		local arg1Type = typeof(args[1])
 		Assert(arg1Type == "string" or arg1Type == "table", "Invalid argument #1 (must be type 'string' or 'table')")
@@ -33,24 +33,24 @@ return function(signal, ...)
 			local key = args[1]
 			local callback = args[2]
 
-			return signal:Connect(function(newData, oldData)
+			connection._metadata.callback = function(newData, oldData)
 				local newValue = newData[key]
 				local oldValue = oldData[key]
 				if not DeepEqual(newValue, oldValue) then
 					callback(newValue, oldValue)
 				end
-			end)
+			end
 		elseif arg1Type == "table" then
 			local path = args[1]
 			local callback = args[2]
 
-			return signal:Connect(function(newData, oldData)
+			connection._metadata.callback = function(newData, oldData)
 				local newValue = getPath(path, newData)
 				local oldValue = getPath(path, oldData)
 				if not DeepEqual(newValue, oldValue) then
 					callback(newValue, oldValue)
 				end
-			end)
+			end
 		end
 	end
 end
