@@ -7,6 +7,23 @@ local plr = Players.LocalPlayer
 
 local replicator = Replicator.new(plr.UserId..'_replicator')
 
-replicator:Connect(function(newValue, oldValue)
-    print('Client: [Changed]', newValue, oldValue)
+replicator.Changed:Connect(function(newValue, oldValue)
+    print('Client: [Connect]', newValue, oldValue)
 end)
+replicator.Changed:Once(function(newValue, oldValue)
+    print('Client: [Once]', newValue, oldValue)
+end)
+
+replicator.Event:Connect('TestEvent', function(...)
+    print('TestEvent: [Connect]', ...)
+end)
+replicator.Event:Once('TestEvent', function(...)
+    print('TestEvent: [Once]', ...)
+end)
+
+task.wait(5)
+
+replicator:FireEvent('TestEvent', 'a', 'b', 'c')
+replicator:FireEvent('TestEvent', 'c', 'b', 'a')
+
+print('-------------------')

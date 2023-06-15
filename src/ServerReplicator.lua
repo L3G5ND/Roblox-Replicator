@@ -1,9 +1,9 @@
-local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 local Package = script.Parent
 local Networker = require(Package.Networker)
-local WrapChangedConnection = require(Package.WrapChangedConnection)
+local Signal = require(Package.Signal)
+local ChangedCallback = require(Package.ChangedCallback)
 local None = require(Package.None)
 
 local Util = Package.Util
@@ -11,13 +11,17 @@ local Assert = require(Util.Assert)
 local Assign = require(Util.Assign)
 local DeepEqual = require(Util.DeepEqual)
 local Copy = require(Util.Copy)
+local TypeMarker = require(Util.TypeMarker)
 
 local getReplicatorRemote = Networker.new("Replicator/Get")
 local destroyReplicatorRemote = Networker.new("Replicator/Destroy")
 local replicatorChangedRemote = Networker.new("Replicator/Changed")
+local eventReplicatorRemote = Networker.new("Replicator/Event")
 
 local ServerReplicator = {}
 local Replicators = {}
+
+local ReplicatorType = TypeMarker.Mark("[Replicator]")
 
 local function removeNone(tbl)
 	for key, value in pairs(tbl) do
@@ -26,14 +30,6 @@ local function removeNone(tbl)
 		elseif typeof(value) == "table" then
 			removeNone(value)
 		end
-	end
-end
-
-local function playerIterator(players)
-	if players == "all" then
-		return pairs(Players:GetPlayers())
-	else
-		return pairs(players)
 	end
 end
 
@@ -50,13 +46,62 @@ function ServerReplicator.new(data)
 		"Invalid argument #1 ('data.players' must be a 'table', 'string' ('all'), or 'nil')"
 	)
 
-	local self = setmetatable({}, { __index = ServerReplicator })
+	local self = setmetatable({}, {
+		__index = ServerReplicator,
+		__tostring = function()
+			return ReplicatorType
+		end,
+	})
+
+	self._type = ReplicatorType
 
 	self.key = data.key
 	self.data = data.data
 	self.players = data.players or "all"
 
-	self._changedConnection = {}
+	self._ChangedSignal = Signal.new()
+	self.Changed = {
+		Connect = function(_, ...)
+			return self._ChangedSignal:Connect(ChangedCallback(...))
+		end,
+		Once = function(_, ...)
+			return self._ChangedSignal:Once(ChangedCallback(...))
+		end,
+		Wait = self._ChangedSignal.Wait,
+		DisconnectAll = self._ChangedSignal.DisconnectAll,
+	}
+
+	self._EvenetSignal = Signal.new()
+	self.Event = {
+		Connect = function(_, eventName, callback)
+			self._EvenetSignal:Connect(function(otherEventName, ...)
+				if eventName == otherEventName then
+					callback(...)
+				end
+			end)
+		end,
+		Once = function(_, eventName, callback)
+			local connection
+			connection = self._EvenetSignal:Connect(function(otherEventName, ...)
+				if eventName == otherEventName then
+					connection:Disconnect()
+					callback(...)
+				end
+			end)
+		end,
+		Wait = function(_, eventName)
+			local thread = coroutine.running()
+			local connection
+			connection = self._EvenetSignal:Connect(function(otherEventName, ...)
+				if eventName == otherEventName then
+					connection:Disconnect()
+					task.spawn(thread, ...)
+				end
+			end)
+			return coroutine.yield()
+		end,
+		DisconnectAll = self._EvenetSignal.DisconnectAll,
+	}
 
 	if not Replicators[self.key] then
 		Replicators[self.key] = {}
@@ -70,27 +115,42 @@ function ServerReplicator.getReplicator(key)
 	return Replicators[key]
 end
 
+function ServerReplicator.is(replicator)
+	if typeof(replicator) == "table" then
+		return replicator._type == ReplicatorType
+	end
+	return false
+end
+
 function ServerReplicator:get()
 	return Copy(self.data)
 end
 
-function ServerReplicator:set(value)
+function ServerReplicator:set(value, hard)
 	local oldData = Copy(self.data)
-	if typeof(value) == "table" and typeof(self.data) == "table" then
-		Assign(self.data, value)
-		removeNone(self.data)
+	if hard then
+		self.data = value
 	else
-		if value == None then
-			self.data = nil
+		if typeof(value) == "table" and typeof(self.data) == "table" then
+			Assign(self.data, value)
+			removeNone(self.data)
 		else
-			self.data = value
+			if value == None then
+				self.data = nil
+			else
+				self.data = value
+			end
 		end
 	end
 	if not DeepEqual(self.data, oldData) then
-		for _, connection in pairs(self._changedConnection) do
-			connection._metadata.callback(self.data, oldData)
-		end
+		self._ChangedSignal:Fire(self.data, oldData)
 		self:_updateClients()
+	end
+end
+
+function ServerReplicator:FireEvent(eventName, ...)
+	for _, plr in self:playerIterator(self.players) do
+		eventReplicatorRemote:Fire(plr, self.key, eventName, ...)
 	end
 end
 
@@ -106,9 +166,9 @@ function ServerReplicator:setPlayers(newPlayers)
 	end
 	self.players = newPlayers
 
-	for _, player in playerIterator(oldPlayers) do
+	for _, player in self:playerIterator(oldPlayers) do
 		local hasPlayer = false
-		for _, otherPlayer in playerIterator(newPlayers) do
+		for _, otherPlayer in self:playerIterator(newPlayers) do
 			if otherPlayer == player then
 				hasPlayer = true
 			end
@@ -120,35 +180,20 @@ function ServerReplicator:setPlayers(newPlayers)
 	self:_updateClients()
 end
 
-function ServerReplicator:Connect(...)
-	local connections = self._changedConnection
-
-	local connection = {
-		_metadata = {
-			callback = nil,
-		},
-		_id = HttpService:GenerateGUID(false),
-		_isAlive = true,
-	}
-
-	function connection:Disconnect()
-		self._isAlive = false
-		connections[self._id] = nil
-	end
-
-	setmetatable(connection, { __index = connection })
-
-	connections[connection._id] = connection
-
-	WrapChangedConnection(connection, ...)
-
-	return connection
+function ServerReplicator:getKey()
+	return self.key
 end
 
-function ServerReplicator:DisconnectAll()
-	for _, connection in self._changedConnection do
-		connection:Disconnect()
+function ServerReplicator:playerIterator(players)
+	if players == "all" then
+		return pairs(Players:GetPlayers())
+	else
+		return pairs(players)
 	end
+end
+
+function ServerReplicator:getPlayers()
+	return self.players
 end
 
 function ServerReplicator:isPlayerReplicated(player)
@@ -163,16 +208,25 @@ function ServerReplicator:isPlayerReplicated(player)
 	return false
 end
 
+function ServerReplicator:getSelf()
+	local tbl = {}
+	for key, value in self do
+		tbl[key] = value
+	end
+	return tbl
+end
+
 function ServerReplicator:Destroy()
-	self:DisconnectAll()
-	for _, player in playerIterator(self.players) do
+	self._ChangedSignal:DisconnectAll()
+	self._EvenetSignal:DisconnectAll()
+	for _, player in self:playerIterator(self.players) do
 		destroyReplicatorRemote:Fire(player, self.key)
 	end
 	Replicators[self.key] = nil
 end
 
 function ServerReplicator:_updateClients()
-	for _, plr in playerIterator(self.players) do
+	for _, plr in self:playerIterator(self.players) do
 		replicatorChangedRemote:Fire(plr, self:_getSendableData())
 	end
 end
@@ -193,6 +247,16 @@ getReplicatorRemote:OnInvoke(function(plr, key)
 			return replicator:_getSendableData()
 		end
 		return "Access denied", true
+	end
+end)
+
+eventReplicatorRemote:Connect(function(plr, key, eventName, ...)
+	local replicator = Replicators[key]
+	if replicator then
+		local isReplicated = replicator:isPlayerReplicated(plr)
+		if isReplicated then
+			replicator._EvenetSignal:Fire(eventName, plr, ...)
+		end
 	end
 end)
 

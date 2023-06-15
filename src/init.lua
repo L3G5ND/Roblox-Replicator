@@ -6,6 +6,8 @@ local ReplicatorAPI = {}
 
 ReplicatorAPI.new = Replicator.new
 
+ReplicatorAPI.is = Replicator.is
+
 ReplicatorAPI.None = require(script.None)
 
 return ReplicatorAPI

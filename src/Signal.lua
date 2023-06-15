@@ -6,10 +6,10 @@ local Error = require(Util.Error)
 local Packages = RS:FindFirstChild("Packages")
 
 if Packages then
-	local Package = Packages:FindFirstChild("Networker")
+	local Package = Packages:FindFirstChild("Signal")
 	if Package then
 		return require(Package)
 	end
 end
 
-Error("Couldn't find 'Networker' in 'ReplicatedStorage.Packages'")
+Error("Couldn't find 'Signal' in 'ReplicatedStorage.Packages'")

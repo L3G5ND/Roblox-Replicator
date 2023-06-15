@@ -16,11 +16,28 @@ game.Players.PlayerAdded:Connect(function(player)
         players = { player }
     })
 
-    replicator:Connect(function(newValue, oldValue)
-        print('Server: [Changed]', newValue, oldValue)
+    replicator.Event:Connect('TestEvent', function(...)
+        print('TestEvent: [Connect]', ...)
+    end)
+    replicator.Event:Once('TestEvent', function(...)
+        print('TestEvent: [Once]', ...)
+    end)
+    
+    task.wait(4)
+    
+    replicator:FireEvent('TestEvent', 'a', 'b', 'c')
+    replicator:FireEvent('TestEvent', 'c', 'b', 'a')
+
+    replicator.Changed:Connect(function(newValue, oldValue)
+        print('Server: [Connect]', newValue, oldValue)
+    end)
+    replicator.Changed:Once(function(newValue, oldValue)
+        print('Server: [Once]', newValue, oldValue)
     end)
 
     task.wait(5)
+
+    print('-------------------')
     
     replicator:set({
         c = {
@@ -28,8 +45,11 @@ game.Players.PlayerAdded:Connect(function(player)
             b = 'a'
         }
     })
+    
 
     task.wait(1)
+
+    print('-------------------')
 
     replicator:set({
         b = Replicator.None,
@@ -41,11 +61,15 @@ game.Players.PlayerAdded:Connect(function(player)
 
     task.wait(1)
 
+    print('-------------------')
+
     replicator:set({
         c = Replicator.None
     })
 
     task.wait(1)
+
+    print('-------------------')
 
     replicator:set(Replicator.None)
 

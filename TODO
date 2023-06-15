@@ -1,0 +1,13 @@
+:FireEvent(eventName, ...)
+.Event:Connect(callback)
+.Event:Once(callback)
+.Event:Wait()
+
+
+:sync()
+:unsync()
+
+:set(value, hard)
+
+:getPlayers()
+:getKey()
