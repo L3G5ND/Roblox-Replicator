@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Package = script.Parent
 local Networker = require(Package.Networker)
 local Signal = require(Package.Signal)
+local SignalWrapper = require(Package.SignalWrapper)
 local ChangedCallback = require(Package.ChangedCallback)
 local None = require(Package.None)
 
@@ -68,21 +69,19 @@ function ClientReplicator.new(key, timeOut)
 	self._type = ReplicatorType
 
 	self._ChangedSignal = Signal.new()
-	self.Changed = {
+	self.Changed = SignalWrapper(self._ChangedSignal, {
 		Connect = function(_, ...)
 			return self._ChangedSignal:Connect(ChangedCallback(...))
 		end,
 		Once = function(_, ...)
 			return self._ChangedSignal:Once(ChangedCallback(...))
-		end,
-		Wait = self._ChangedSignal.Wait,
-		DisconnectAll = self._ChangedSignal.DisconnectAll,
-	}
+		end
+	})
 
 	self._EvenetSignal = Signal.new()
-	self.Event = {
+	self.Event = SignalWrapper(self._EvenetSignal, {
 		Connect = function(_, eventName, callback)
-			self._EvenetSignal:Connect(function(otherEventName, ...)
+			return self._EvenetSignal:Connect(function(otherEventName, ...)
 				if eventName == otherEventName then
 					callback(...)
 				end
@@ -96,6 +95,7 @@ function ClientReplicator.new(key, timeOut)
 					callback(...)
 				end
 			end)
+			return connection
 		end,
 		Wait = function(_, eventName)
 			local thread = coroutine.running()
@@ -108,8 +108,10 @@ function ClientReplicator.new(key, timeOut)
 			end)
 			return coroutine.yield()
 		end,
-		DisconnectAll = self._EvenetSignal.DisconnectAll,
-	}
+	})
+
+	self._DestroyedSignal = Signal.new()
+	self.Destroyed = SignalWrapper(self._DestroyedSignal)
 
 	if not Replicators[self.key] then
 		Replicators[self.key] = {}
@@ -151,7 +153,7 @@ function ClientReplicator:playerIterator(players)
 end
 
 function ClientReplicator:getPlayers()
-	return self.players
+	return Copy(self.players)
 end
 
 function ClientReplicator:isPlayerReplicated(player)
@@ -175,6 +177,8 @@ function ClientReplicator:getSelf()
 end
 
 function ClientReplicator:Destroy()
+	self._DestroyedSignal:Fire()
+	self._DestroyedSignal:DisconnectAll()
 	self._ChangedSignal:DisconnectAll()
 	self._EvenetSignal:DisconnectAll()
 	Replicators[self.key] = nil

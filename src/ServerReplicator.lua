@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local Package = script.Parent
 local Networker = require(Package.Networker)
 local Signal = require(Package.Signal)
+local SignalWrapper = require(Package.SignalWrapper)
 local ChangedCallback = require(Package.ChangedCallback)
 local None = require(Package.None)
 
@@ -60,21 +61,19 @@ function ServerReplicator.new(data)
 	self.players = data.players or "all"
 
 	self._ChangedSignal = Signal.new()
-	self.Changed = {
+	self.Changed = SignalWrapper(self._ChangedSignal, {
 		Connect = function(_, ...)
 			return self._ChangedSignal:Connect(ChangedCallback(...))
 		end,
 		Once = function(_, ...)
 			return self._ChangedSignal:Once(ChangedCallback(...))
-		end,
-		Wait = self._ChangedSignal.Wait,
-		DisconnectAll = self._ChangedSignal.DisconnectAll,
-	}
+		end
+	})
 
 	self._EvenetSignal = Signal.new()
-	self.Event = {
+	self.Event = SignalWrapper(self._EvenetSignal, {
 		Connect = function(_, eventName, callback)
-			self._EvenetSignal:Connect(function(otherEventName, ...)
+			return self._EvenetSignal:Connect(function(otherEventName, ...)
 				if eventName == otherEventName then
 					callback(...)
 				end
@@ -88,6 +87,7 @@ function ServerReplicator.new(data)
 					callback(...)
 				end
 			end)
+			return connection
 		end,
 		Wait = function(_, eventName)
 			local thread = coroutine.running()
@@ -100,8 +100,10 @@ function ServerReplicator.new(data)
 			end)
 			return coroutine.yield()
 		end,
-		DisconnectAll = self._EvenetSignal.DisconnectAll,
-	}
+	})
+
+	self._DestroyedSignal = Signal.new()
+	self.Destroyed = SignalWrapper(self._DestroyedSignal)
 
 	if not Replicators[self.key] then
 		Replicators[self.key] = {}
@@ -193,7 +195,7 @@ function ServerReplicator:playerIterator(players)
 end
 
 function ServerReplicator:getPlayers()
-	return self.players
+	return Copy(self.players)
 end
 
 function ServerReplicator:isPlayerReplicated(player)
@@ -217,6 +219,8 @@ function ServerReplicator:getSelf()
 end
 
 function ServerReplicator:Destroy()
+	self._DestroyedSignal:Fire()
+	self._DestroyedSignal:DisconnectAll()
 	self._ChangedSignal:DisconnectAll()
 	self._EvenetSignal:DisconnectAll()
 	for _, player in self:playerIterator(self.players) do

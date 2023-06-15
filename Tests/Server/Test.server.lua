@@ -35,6 +35,10 @@ game.Players.PlayerAdded:Connect(function(player)
         print('Server: [Once]', newValue, oldValue)
     end)
 
+    replicator.Destroyed:Connect(function()
+        print('[Destroyed]')
+    end)
+
     task.wait(5)
 
     print('-------------------')
@@ -74,6 +78,8 @@ game.Players.PlayerAdded:Connect(function(player)
     replicator:set(Replicator.None)
 
     task.wait(1)
+    
+    print('-------------------')
 
     replicator:Destroy()
 end)

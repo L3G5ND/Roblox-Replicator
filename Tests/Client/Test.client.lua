@@ -21,6 +21,10 @@ replicator.Event:Once('TestEvent', function(...)
     print('TestEvent: [Once]', ...)
 end)
 
+replicator.Destroyed:Connect(function()
+    print('[Destroyed]')
+end)
+
 task.wait(5)
 
 replicator:FireEvent('TestEvent', 'a', 'b', 'c')
