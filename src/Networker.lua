@@ -8,7 +8,7 @@ if Packages then
     if Packages:FindFirstChild(packageName) then
         return require(Packages[packageName])
     elseif script.Parent.Parent:FindFirstChild(packageName) then
-        return require(script.Parent.Parent[Packages])
+        return require(script.Parent.Parent[packageName])
     end
     error("Coudln't find package ["..packageName.."]")
 end
