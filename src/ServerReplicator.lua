@@ -186,7 +186,7 @@ function ServerReplicator:merge(table)
 		for key, value in pairs(tbl2) do
 			if typeof(value) == "table" and typeof(tbl1[key]) == "table" then
 				merge(tbl1[key], value)
-			else
+			elseif tbl1[key] == nil then
 				tbl1[key] = value
 			end
 		end
