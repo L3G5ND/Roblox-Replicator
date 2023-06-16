@@ -3,7 +3,6 @@ local Players = game:GetService("Players")
 local Package = script.Parent
 local Networker = require(Package.Networker)
 local Signal = require(Package.Signal)
-local SignalWrapper = require(Package.SignalWrapper)
 local ChangedCallback = require(Package.ChangedCallback)
 local None = require(Package.None)
 
@@ -23,6 +22,36 @@ local ServerReplicator = {}
 local Replicators = {}
 
 local ReplicatorType = TypeMarker.Mark("[Replicator]")
+
+local function signalWrapper(signal, events)
+	events = events or {}
+	return {
+		Connect = function(_, ...)
+			if events.Connect then
+				return events.Connect(signal, ...)
+			end
+			return signal:Connect(...)
+		end,
+		Once = function(_, ...)
+			if events.Once then
+				return events.Once(signal, ...)
+			end
+			return signal:Once(...)
+		end,
+		Wait = function()
+			if events.Wait then
+				return events.Wait(signal)
+			end
+			return signal:Wait()
+		end,
+		DisconnectAll = function()
+			if events.DisconnectAll then
+				return events.DisconnectAll(signal)
+			end
+			signal:DisconnectAll()
+		end
+	}
+end
 
 local function removeNone(tbl)
 	for key, value in pairs(tbl) do
@@ -61,7 +90,7 @@ function ServerReplicator.new(data)
 	self.players = data.players or "all"
 
 	self._ChangedSignal = Signal.new()
-	self.Changed = SignalWrapper(self._ChangedSignal, {
+	self.Changed = signalWrapper(self._ChangedSignal, {
 		Connect = function(_, ...)
 			return self._ChangedSignal:Connect(ChangedCallback(...))
 		end,
@@ -71,7 +100,7 @@ function ServerReplicator.new(data)
 	})
 
 	self._EvenetSignal = Signal.new()
-	self.Event = SignalWrapper(self._EvenetSignal, {
+	self.Event = signalWrapper(self._EvenetSignal, {
 		Connect = function(_, eventName, callback)
 			return self._EvenetSignal:Connect(function(otherEventName, ...)
 				if eventName == otherEventName then
@@ -103,7 +132,7 @@ function ServerReplicator.new(data)
 	})
 
 	self._DestroyedSignal = Signal.new()
-	self.Destroyed = SignalWrapper(self._DestroyedSignal)
+	self.Destroyed = signalWrapper(self._DestroyedSignal)
 
 	if not Replicators[self.key] then
 		Replicators[self.key] = {}
@@ -148,6 +177,22 @@ function ServerReplicator:set(value, hard)
 		self._ChangedSignal:Fire(self.data, oldData)
 		self:_updateClients()
 	end
+end
+
+function ServerReplicator:merge(table)
+	Assert(typeof(self:get()) == "table", "Can only merge when typeof(self.data) == 'table'")
+	Assert(typeof(table) == 'table', "Invalid argument #1 (must be a 'table')")
+	local function merge(tbl1, tbl2)
+		for key, value in pairs(tbl2) do
+			if typeof(value) == "table" and typeof(tbl1[key]) == "table" then
+				merge(tbl1[key], value)
+			else
+				tbl1[key] = value
+			end
+		end
+		return tbl1
+	end
+	self:set(merge(self:get(), table), true)
 end
 
 function ServerReplicator:FireEvent(eventName, ...)

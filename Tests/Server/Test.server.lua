@@ -55,11 +55,12 @@ game.Players.PlayerAdded:Connect(function(player)
 
     print('-------------------')
 
-    replicator:set({
-        b = Replicator.None,
+    replicator:merge({
         c = {
-            a = 'a',
-            b = Replicator.None
+            c = {
+                a = 'a',
+                b = 'b'
+            }
         }
     })
 
@@ -67,8 +68,14 @@ game.Players.PlayerAdded:Connect(function(player)
 
     print('-------------------')
 
-    replicator:set({
-        c = Replicator.None
+    replicator:merge({
+        b = Replicator.None,
+        c = {
+            b = Replicator.None,
+            c = {
+                b = Replicator.None
+            }
+        }
     })
 
     task.wait(1)
