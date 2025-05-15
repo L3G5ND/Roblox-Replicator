@@ -1,0 +1,5 @@
+Once checks for condition once meaning if its false it wont stay open
+when creating replicator make all other replicators with the same key wait for the first one to finish being created
+Make API better
+Fix __tostring
+defer changes
