@@ -233,6 +233,12 @@ function ServerReplicator:setPlayers(newPlayers)
 			destroyReplicatorRemote:Fire(player, self.key)
 		end
 	end
+	for _, player in self:playerIterator(newPlayers) do
+		if RequestedReplicators[player] and RequestedReplicators[player][self.key] then
+			RequestedReplicators[player][self.key] = nil
+			shareReplicatorRemote:Fire(player, self:_getSendableData())
+		end
+	end
 	self:_updateClients()
 end
 

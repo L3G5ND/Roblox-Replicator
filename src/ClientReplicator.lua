@@ -18,11 +18,26 @@ local destroyReplicatorRemote = Networker.new("Replicator/Destroy")
 local replicatorChangedRemote = Networker.new("Replicator/Changed")
 local eventReplicatorRemote = Networker.new("Replicator/Event")
 
-local RequestedReplicatorData = {}
 local ClientReplicator = {}
+local RequestedReplicatorData = {}
+local LoadingReplicators = {}
 local Replicators = {}
 
 local ReplicatorType = TypeMarker.Mark("[Replicator]")
+
+local function expect(callback, errorMsg, timeout)
+	timeout = timeout or 10
+	local startTime = os.clock()
+	while true do
+		if callback() ~= nil then
+			return
+		end
+		if os.clock() - startTime >= timeout then
+			Error(errorMsg)
+		end
+		task.wait()
+	end
+end
 
 local function signalWrapper(signal, events)
 	events = events or {}
@@ -74,24 +89,31 @@ function ClientReplicator.new(key, timeOut)
 
 	local replicator
 
-	local startTime = os.clock()
-	
-	local result, accessDenied = getReplicatorRemote:Invoke(key)
-	if accessDenied then
-		Error(result)
-	end
-	if result then
-		replicator = result
+	if LoadingReplicators[key] then
+		expect(function()
+			return LoadingReplicators[key]
+		end, "Wasn't able to get replicator '" .. key .. "'", 30)
+		return LoadingReplicators[key]
 	else
-		local startTime = os.clock()
-		while task.wait() do
-			if RequestedReplicatorData[key] then
-				replicator = RequestedReplicatorData[key]
-				RequestedReplicatorData[key] = nil
-				break
-			end
-			if os.clock() - startTime >= (timeOut or 10) then
-				Error("Invalid replicator key ('" .. key .. "')")
+		LoadingReplicators[key] = true
+
+		local result, accessDenied = getReplicatorRemote:Invoke(key)
+		if accessDenied then
+			Error(result)
+		end
+		if result then
+			replicator = result
+		else
+			local startTime = os.clock()
+			while task.wait() do
+				if RequestedReplicatorData[key] then
+					replicator = RequestedReplicatorData[key]
+					RequestedReplicatorData[key] = nil
+					break
+				end
+				if (os.clock() - startTime) >= (timeOut or 25) then
+					Error("Invalid replicator key ('" .. key .. "')")
+				end
 			end
 		end
 	end
@@ -154,6 +176,8 @@ function ClientReplicator.new(key, timeOut)
 		Replicators[self.key] = {}
 	end
 	Replicators[self.key] = self
+	
+	LoadingReplicators[key] = nil
 
 	return self
 end
