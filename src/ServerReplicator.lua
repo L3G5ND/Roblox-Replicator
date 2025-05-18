@@ -14,10 +14,12 @@ local Copy = require(Util.Copy)
 local TypeMarker = require(Util.TypeMarker)
 
 local getReplicatorRemote = Networker.new("Replicator/Get")
+local shareReplicatorRemote = Networker.new("Replicator/Share")
 local destroyReplicatorRemote = Networker.new("Replicator/Destroy")
 local replicatorChangedRemote = Networker.new("Replicator/Changed")
 local eventReplicatorRemote = Networker.new("Replicator/Event")
 
+local RequestedReplicators = {}
 local ServerReplicator = {}
 local Replicators = {}
 
@@ -138,6 +140,13 @@ function ServerReplicator.new(data)
 		Replicators[self.key] = {}
 	end
 	Replicators[self.key] = self
+	
+	for _, player in self:playerIterator(self.players) do
+		if RequestedReplicators[player] and RequestedReplicators[player][self.key] then
+			RequestedReplicators[player][self.key] = nil
+			shareReplicatorRemote:Fire(player, self:_getSendableData())
+		end
+	end
 
 	return self
 end
@@ -296,6 +305,11 @@ getReplicatorRemote:OnInvoke(function(plr, key)
 			return replicator:_getSendableData()
 		end
 		return "Access denied", true
+	else
+		if not RequestedReplicators[plr] then
+			RequestedReplicators[plr] = {}
+		end
+		RequestedReplicators[plr][key] = true
 	end
 end)
 
@@ -307,6 +321,10 @@ eventReplicatorRemote:Connect(function(plr, key, eventName, ...)
 			replicator._EvenetSignal:Fire(eventName, plr, ...)
 		end
 	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	RequestedReplicators[player] = nil
 end)
 
 return ServerReplicator

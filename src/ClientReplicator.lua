@@ -13,10 +13,12 @@ local TypeMarker = require(Util.TypeMarker)
 local Error = require(Util.Error)
 
 local getReplicatorRemote = Networker.new("Replicator/Get")
+local shareReplicatorRemote = Networker.new("Replicator/Share")
 local destroyReplicatorRemote = Networker.new("Replicator/Destroy")
 local replicatorChangedRemote = Networker.new("Replicator/Changed")
 local eventReplicatorRemote = Networker.new("Replicator/Event")
 
+local RequestedReplicatorData = {}
 local ClientReplicator = {}
 local Replicators = {}
 
@@ -73,19 +75,25 @@ function ClientReplicator.new(key, timeOut)
 	local replicator
 
 	local startTime = os.clock()
-	while true do
-		local result, shouldError = getReplicatorRemote:Invoke(key)
-		if shouldError then
-			Error(result)
+	
+	local result, accessDenied = getReplicatorRemote:Invoke(key)
+	if accessDenied then
+		Error(result)
+	end
+	if result then
+		replicator = result
+	else
+		local startTime = os.clock()
+		while task.wait() do
+			if RequestedReplicatorData[key] then
+				replicator = RequestedReplicatorData[key]
+				RequestedReplicatorData[key] = nil
+				break
+			end
+			if os.clock() - startTime >= (timeOut or 10) then
+				Error("Invalid replicator key ('" .. key .. "')")
+			end
 		end
-		if result then
-			replicator = result
-			break
-		end
-		if os.clock() - startTime >= (timeOut or 5) then
-			Error("Invalid replicator key ('" .. key .. "')")
-		end
-		task.wait()
 	end
 
 	local self = setmetatable(replicator, {
@@ -219,6 +227,13 @@ function ClientReplicator:_update(updatedReplicator)
 	self.players = updatedReplicator.players
 	self._ChangedSignal:Fire(self.data, oldData)
 end
+
+shareReplicatorRemote:Connect(function(result, accessDenied)
+	if accessDenied then
+		Error(result)
+	end
+	RequestedReplicatorData[result.key] = result
+end)
 
 destroyReplicatorRemote:Connect(function(key)
 	local replicator = Replicators[key]
