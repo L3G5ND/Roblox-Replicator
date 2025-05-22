@@ -91,9 +91,9 @@ function ClientReplicator.new(key, timeOut)
 
 	if LoadingReplicators[key] then
 		expect(function()
-			return LoadingReplicators[key]
+			return Replicators[key]
 		end, "Wasn't able to get replicator '" .. key .. "'", 30)
-		return LoadingReplicators[key]
+		return Replicators[key]
 	else
 		LoadingReplicators[key] = true
 
@@ -172,11 +172,7 @@ function ClientReplicator.new(key, timeOut)
 	self._DestroyedSignal = Signal.new()
 	self.Destroyed = signalWrapper(self._DestroyedSignal)
 
-	if not Replicators[self.key] then
-		Replicators[self.key] = {}
-	end
 	Replicators[self.key] = self
-	
 	LoadingReplicators[key] = nil
 
 	return self

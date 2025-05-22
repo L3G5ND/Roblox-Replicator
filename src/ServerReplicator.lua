@@ -136,9 +136,6 @@ function ServerReplicator.new(data)
 	self._DestroyedSignal = Signal.new()
 	self.Destroyed = signalWrapper(self._DestroyedSignal)
 
-	if not Replicators[self.key] then
-		Replicators[self.key] = {}
-	end
 	Replicators[self.key] = self
 	
 	for _, player in self:playerIterator(self.players) do
