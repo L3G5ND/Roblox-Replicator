@@ -25,6 +25,17 @@ local Replicators = {}
 
 local ReplicatorType = TypeMarker.Mark("[Replicator]")
 
+local function getLength(tbl)
+	if typeof(tbl) ~= "table" then
+		return 0
+	end
+	local count = 0
+	for _, _ in tbl do
+		count += 1
+	end
+	return count
+end
+
 local function signalWrapper(signal, events)
 	events = events or {}
 	return {
@@ -57,7 +68,7 @@ end
 
 local function removeNone(tbl)
 	for key, value in pairs(tbl) do
-		if value == None then
+		if value == None or value == "[Replicator]-[None]" then
 			tbl[key] = nil
 		elseif typeof(value) == "table" then
 			removeNone(value)
@@ -90,6 +101,9 @@ function ServerReplicator.new(data)
 	self.key = data.key
 	self.data = data.data
 	self.players = data.players or "all"
+
+	self._pendingUpdates = {}
+	self._deferedUpdateThread = nil
 
 	self._ChangedSignal = Signal.new()
 	self.Changed = signalWrapper(self._ChangedSignal, {
@@ -136,8 +150,10 @@ function ServerReplicator.new(data)
 	self._DestroyedSignal = Signal.new()
 	self.Destroyed = signalWrapper(self._DestroyedSignal)
 
+	self.isAlive = true
+
 	Replicators[self.key] = self
-	
+
 	for _, player in self:playerIterator(self.players) do
 		if RequestedReplicators[player] and RequestedReplicators[player][self.key] then
 			RequestedReplicators[player][self.key] = nil
@@ -181,7 +197,45 @@ function ServerReplicator:set(value, hard)
 	end
 	if not DeepEqual(self.data, oldData) then
 		self._ChangedSignal:Fire(self.data, oldData)
-		self:_updateClients()
+		if typeof(value) == "table" and typeof(oldData) == "table" then
+			local function getUpdatedData(data, oldData)
+				local updatedData = {}
+				for key, value in data do
+					if oldData[key] == nil then
+						updatedData[key] = value
+					elseif typeof(value) == "table" then
+						if typeof(oldData[key]) == "table" then
+							local data = getUpdatedData(value, oldData[key])
+							if data then
+								updatedData[key] = data
+							end
+						else
+							updatedData[key] = value
+						end
+					elseif value ~= oldData[key] then
+						updatedData[key] = value
+					end
+				end
+
+				for key, value in oldData do
+					if data[key] == nil then
+						updatedData[key] = "[Replicator]-[None]"
+					elseif typeof(value) == "table" then
+						local data = getUpdatedData(data[key], value)
+						if data then
+							updatedData[key] = data
+						end
+					end
+				end
+
+				if getLength(updatedData) > 0 then
+					return updatedData
+				end
+			end
+			self:_updateClients(getUpdatedData(self.data, oldData))
+		else
+			self:_updateClients()
+		end
 	end
 end
 
@@ -283,19 +337,47 @@ function ServerReplicator:Destroy()
 	for _, player in self:playerIterator(self.players) do
 		destroyReplicatorRemote:Fire(player, self.key)
 	end
+	self.isAlive = false
 	Replicators[self.key] = nil
 end
 
-function ServerReplicator:_updateClients()
-	for _, plr in self:playerIterator(self.players) do
-		replicatorChangedRemote:Fire(plr, self:_getSendableData())
+function ServerReplicator:_updateClients(data)
+	data = data or self.data
+	table.insert(self._pendingUpdates, data)
+	if not self._deferedUpdateThread then
+		self._deferedUpdateThread = task.defer(function()
+			self._deferedUpdateThread = nil
+
+			local combinedData = self._pendingUpdates[1]
+			if #self._pendingUpdates > 1 then
+				for i = 2, #self._pendingUpdates do
+					local function combine(tbl1, tbl2)
+						for key, value in pairs(tbl2) do
+							if typeof(value) == "table" and typeof(tbl1[key]) == "table" then
+								combine(tbl1[key], value)
+							else
+								tbl1[key] = value
+							end
+						end
+						return tbl1
+					end
+					combine(combinedData, self._pendingUpdates[i])
+				end
+			end
+
+			for _, plr in self:playerIterator(self.players) do
+				replicatorChangedRemote:Fire(plr, self:_getSendableData(data))
+			end
+
+			self._pendingUpdates = {}
+		end)
 	end
 end
 
-function ServerReplicator:_getSendableData()
+function ServerReplicator:_getSendableData(updatedData)
 	local data = {}
 	data.key = self.key
-	data.data = self.data
+	data.data = updatedData or self.data
 	data.players = self.players
 	return data
 end

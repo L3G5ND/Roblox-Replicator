@@ -69,14 +69,44 @@ local function signalWrapper(signal, events)
 	}
 end
 
+local function toNumberKeys(data)
+	if typeof(data) ~= "table" then
+		return data
+	end
+
+	local toNumberData = {}
+	for key, value in data do
+		if tonumber(key) then
+			key = tonumber(key)
+		end
+		if typeof(value) == "table" then
+			toNumberData[key] = toNumberKeys(value)
+		else
+			toNumberData[key] = value
+		end
+	end
+	return toNumberData
+end
+
 local function removeNone(tbl)
 	for key, value in pairs(tbl) do
-		if value == None then
+		if value == None or value == "[Replicator]-[None]" then
 			tbl[key] = nil
 		elseif typeof(value) == "table" then
 			removeNone(value)
 		end
 	end
+end
+
+local function getLength(tbl)
+	if typeof(tbl) ~= "table" then
+		return 0
+	end
+	local count = 0
+	for _, _ in tbl do
+		count += 1
+	end
+	return count
 end
 
 function ClientReplicator.new(key, timeOut)
@@ -102,6 +132,7 @@ function ClientReplicator.new(key, timeOut)
 			Error(result)
 		end
 		if result then
+			result.data = toNumberKeys(result.data)
 			replicator = result
 		else
 			local startTime = os.clock()
@@ -243,7 +274,35 @@ end
 
 function ClientReplicator:_update(updatedReplicator)
 	local oldData = Copy(self.data)
-	self.data = updatedReplicator.data
+
+	local function updateData(newData, data)
+		if typeof(newData) ~= "table" then
+			return newData
+		end
+		local updatedData = data
+		for key, value in newData do
+			if tonumber(key) then
+				key = tonumber(key)
+			end
+			if value == "[Replicator]-[None]" then
+				updatedData[key] = nil
+			elseif typeof(value) == "table" then
+				if getLength(value) > 0 and typeof(updatedData[key]) == "table" then
+					local data = updateData(value, updatedData[key])
+					if data then
+						updatedData[key] = data
+					end
+				else
+					updatedData[key] = value
+				end
+			else
+				updatedData[key] = value
+			end
+		end
+		return updatedData
+	end
+
+	self.data = updateData(updatedReplicator.data, self.data)
 	self.players = updatedReplicator.players
 	self._ChangedSignal:Fire(self.data, oldData)
 end
@@ -252,6 +311,7 @@ shareReplicatorRemote:Connect(function(result, accessDenied)
 	if accessDenied then
 		Error(result)
 	end
+	result.data = toNumberKeys(result.data)
 	RequestedReplicatorData[result.key] = result
 end)
 
