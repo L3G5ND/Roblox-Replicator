@@ -1,3 +1,4 @@
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 local Package = script.Parent
@@ -214,9 +215,12 @@ function ServerReplicator:set(value, hard)
 						end
 					elseif value ~= oldData[key] then
 						updatedData[key] = value
+					elseif typeof(key) == "number" and #data > key then
+						if data[key] == oldData[key] then
+							updatedData[key] = data[key]
+						end
 					end
 				end
-
 				for key, value in oldData do
 					if data[key] == nil then
 						updatedData[key] = "[Replicator]-[None]"
@@ -227,7 +231,6 @@ function ServerReplicator:set(value, hard)
 						end
 					end
 				end
-
 				if getLength(updatedData) > 0 then
 					return updatedData
 				end
